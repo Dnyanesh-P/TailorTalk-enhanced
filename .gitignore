@@ -1,0 +1,38 @@
+# -----------------------------
+# Python cache & compiled files
+# -----------------------------
+__pycache__/
+*.py[cod]
+*.so
+
+# VSCode settings (local IDE config)
+.vscode/
+
+# -----------------------------
+# Logs
+# -----------------------------
+*.log
+
+# -----------------------------
+# Environment files (secrets)
+# -----------------------------
+.env
+
+# -----------------------------
+# Auth data or local secrets
+# -----------------------------
+auth_data/
+config/credentials.json
+config/token.pickle
+
+# -----------------------------
+# Misc
+# -----------------------------
+logs/
+*.sqlite3
+*.db
+
+# -----------------------------
+# Node modules (if you have JS)
+# -----------------------------
+node_modules/
