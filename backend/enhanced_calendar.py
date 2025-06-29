@@ -249,5 +249,4 @@ def get_enhanced_calendar_manager(timezone_str: str = None) -> EnhancedCalendarM
         if timezone_str is None:
             timezone_str = os.getenv('TIMEZONE', 'Asia/Kolkata')
         _enhanced_calendar_manager = EnhancedCalendarManager(timezone_str)
-    return _enhanced_calendar_m
-
+    return _enhanced_calendar_manager
