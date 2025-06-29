@@ -1,10 +1,13 @@
-"""
-Enhanced TailorTalk server with integrated precise scheduling and real-time availability updates
-INTEGRATED WITH STREAMLIT APP: https://tailortalk-enhanced-uael6bdk6fzdahsnfuemah.streamlit.app/
-"""
-
-import uvicorn
 import os
+
+# Ensure the credentials file exists at the expected path
+creds_env = os.getenv('GOOGLE_CREDENTIALS_JSON')
+creds_path = os.getenv('GOOGLE_CREDENTIALS_PATH', 'config/credentials.json')
+if creds_env and not os.path.exists(creds_path):
+    os.makedirs(os.path.dirname(creds_path), exist_ok=True)
+    with open(creds_path, "w") as f:
+        f.write(creds_env)
+import uvicorn
 import logging
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Depends, status, Query
