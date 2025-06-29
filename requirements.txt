@@ -7,7 +7,6 @@ python-multipart==0.0.6
 langchain==0.1.0
 langgraph==0.0.20
 openai>=1.6.1,<2.0.0
-langchain-openai==0.0.2
 
 
 # Google Calendar Integration
@@ -50,3 +49,11 @@ redis==5.0.1
 
 # Optional: Monitoring and logging
 prometheus-client==0.19.0
+- pydantic==2.5.0
+- langchain-openai==0.0.2
+- tiktoken
++ pydantic==2.5.0
++ pydantic-core==2.13.3
++ langchain-openai==0.0.2
++ tiktoken==0.6.4
+
