@@ -156,7 +156,7 @@ def initialize_session_state():
     if "messages" not in st.session_state:
         st.session_state.messages = []
     if "api_url" not in st.session_state:
-        st.session_state.api_url = os.getenv("API_URL", "http://127.0.0.1:8001")
+        st.session_state.api_url = os.getenv("API_URL", "https://tailortalk-enhanced-1.onrender.com")
     if "availability_data" not in st.session_state:
         st.session_state.availability_data = {}
     if "last_availability_check" not in st.session_state:
