@@ -3,9 +3,9 @@ fastapi==0.104.1
 python-multipart==0.0.6
 uvicorn
 # Updated AI and LangChain dependencies with compatible versions
-openai==1.3.6
-langchain==0.0.350
-langchain-openai==0.0.2
+openai
+langchain
+langchain-openai
 langgraph==0.0.26
 
 # Google API dependencies
