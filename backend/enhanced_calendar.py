@@ -1,28 +1,24 @@
 """
-Enhanced Google Calendar integration with proper timezone handling
+Enhanced Google Calendar integration with proper timezone handling (Service Account version)
 """
 import os
 import logging
 from datetime import datetime, timedelta, time, date
 from typing import List, Dict, Optional, Any
 import pytz
-from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-import pickle
 
 logger = logging.getLogger(__name__)
 
 class EnhancedCalendarManager:
-    """Enhanced Google Calendar manager with proper timezone handling"""
+    """Enhanced Google Calendar manager with proper timezone handling (Service Account)"""
     
     def __init__(self, timezone_str: str = 'Asia/Kolkata'):
         self.timezone = pytz.timezone(timezone_str)
         self.scopes = ['https://www.googleapis.com/auth/calendar']
         self.credentials_path = os.getenv('GOOGLE_CREDENTIALS_PATH', 'config/credentials.json')
-        self.token_path = 'config/token.pickle'
         self.calendar_id = os.getenv('CALENDAR_ID', 'primary')
         self.service = None
         
@@ -33,67 +29,21 @@ class EnhancedCalendarManager:
         
         logger.info(f"Enhanced Calendar Manager initialized with timezone: {timezone_str}")
     
-    def _get_credentials(self) -> Optional[Credentials]:
-        """Get Google Calendar credentials with proper error handling"""
-        creds = None
-        
-        # Load existing token
-        if os.path.exists(self.token_path):
-            try:
-                with open(self.token_path, 'rb') as token:
-                    creds = pickle.load(token)
-                logger.info("Loaded existing credentials from token file")
-            except Exception as e:
-                logger.warning(f"Failed to load existing token: {e}")
-        
-        # If there are no (valid) credentials available, let the user log in
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                try:
-                    creds.refresh(Request())
-                    logger.info("Refreshed expired credentials")
-                except Exception as e:
-                    logger.error(f"Failed to refresh credentials: {e}")
-                    creds = None
-            
-            if not creds:
-                if not os.path.exists(self.credentials_path):
-                    logger.error(f"Credentials file not found: {self.credentials_path}")
-                    return None
-                
-                try:
-                    flow = InstalledAppFlow.from_client_secrets_file(
-                        self.credentials_path, self.scopes)
-                    creds = flow.run_local_server(port=0)
-                    logger.info("Obtained new credentials via OAuth flow")
-                except Exception as e:
-                    logger.error(f"Failed to obtain credentials: {e}")
-                    return None
-            
-            # Save the credentials for the next run
-            try:
-                with open(self.token_path, 'wb') as token:
-                    pickle.dump(creds, token)
-                logger.info("Saved credentials to token file")
-            except Exception as e:
-                logger.warning(f"Failed to save credentials: {e}")
-        
-        return creds
-    
     def _get_service(self):
-        """Get Google Calendar service with proper error handling"""
+        """Get Google Calendar service with Service Account credentials"""
         if self.service is None:
-            creds = self._get_credentials()
-            if not creds:
-                raise Exception("Failed to obtain Google Calendar credentials")
-            
+            if not os.path.exists(self.credentials_path):
+                logger.error(f"Service account credentials file not found: {self.credentials_path}")
+                raise FileNotFoundError(f"Service account credentials file not found: {self.credentials_path}")
             try:
-                self.service = build('calendar', 'v3', credentials=creds)
-                logger.info("Google Calendar service initialized successfully")
+                credentials = service_account.Credentials.from_service_account_file(
+                    self.credentials_path, scopes=self.scopes
+                )
+                self.service = build('calendar', 'v3', credentials=credentials)
+                logger.info("Google Calendar service initialized successfully (service account)")
             except Exception as e:
                 logger.error(f"Failed to build Calendar service: {e}")
                 raise Exception(f"Failed to initialize Google Calendar service: {e}")
-        
         return self.service
     
     def get_availability(self, date_str: str) -> List[str]:
@@ -176,19 +126,14 @@ class EnhancedCalendarManager:
         try:
             # Parse date
             date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
-            
             # Parse time
             time_obj = datetime.strptime(time_str, '%H:%M').time()
-            
             # Combine date and time
             naive_datetime = datetime.combine(date_obj, time_obj)
-            
             # Make timezone-aware
             aware_datetime = self.timezone.localize(naive_datetime)
-            
             logger.info(f"Parsed datetime: {date_str} {time_str} -> {aware_datetime}")
             return aware_datetime
-            
         except Exception as e:
             logger.error(f"Error parsing datetime {date_str} {time_str}: {e}")
             raise ValueError(f"Invalid date/time format: {date_str} {time_str}")
@@ -203,9 +148,7 @@ class EnhancedCalendarManager:
             end_of_day = self.timezone.localize(
                 datetime.combine(target_date, time(23, 59, 59))
             )
-            
             service = self._get_service()
-            
             # Query events for the day
             events_result = service.events().list(
                 calendarId=self.calendar_id,
@@ -214,12 +157,9 @@ class EnhancedCalendarManager:
                 singleEvents=True,
                 orderBy='startTime'
             ).execute()
-            
             events = events_result.get('items', [])
             logger.info(f"Found {len(events)} existing events for {target_date}")
-            
             return events
-            
         except Exception as e:
             logger.error(f"Error getting events for {target_date}: {e}")
             return []
@@ -228,11 +168,9 @@ class EnhancedCalendarManager:
         """Generate all possible time slots for business hours"""
         slots = []
         current_hour = self.business_start
-        
         while current_hour < self.business_end:
             slots.append(f"{current_hour:02d}:00")
             current_hour += 1
-        
         return slots
     
     def _combine_date_time(self, date_obj: date, time_str: str) -> datetime:
@@ -244,47 +182,37 @@ class EnhancedCalendarManager:
     def _is_slot_booked(self, slot_datetime: datetime, existing_events: List[Dict]) -> bool:
         """Check if a time slot is already booked"""
         slot_end = slot_datetime + timedelta(minutes=self.slot_duration)
-        
         for event in existing_events:
             try:
                 # Parse event start and end times
                 event_start_str = event['start'].get('dateTime', event['start'].get('date'))
                 event_end_str = event['end'].get('dateTime', event['end'].get('date'))
-                
                 if not event_start_str or not event_end_str:
                     continue
-                
                 # Handle all-day events (date only)
                 if 'T' not in event_start_str:
                     continue  # Skip all-day events
-                
                 # Parse datetime strings
                 event_start = datetime.fromisoformat(event_start_str.replace('Z', '+00:00'))
                 event_end = datetime.fromisoformat(event_end_str.replace('Z', '+00:00'))
-                
                 # Convert to local timezone if needed
                 if event_start.tzinfo != self.timezone:
                     event_start = event_start.astimezone(self.timezone)
                     event_end = event_end.astimezone(self.timezone)
-                
                 # Check for overlap
                 if (slot_datetime < event_end and slot_end > event_start):
                     return True
-                    
             except Exception as e:
                 logger.warning(f"Error parsing event time: {e}")
                 continue
-        
         return False
     
     def test_connection(self) -> Dict[str, Any]:
         """Test Google Calendar connection"""
         try:
             service = self._get_service()
-            
             # Try to get calendar info
             calendar = service.calendars().get(calendarId=self.calendar_id).execute()
-            
             # Try to get recent events
             now = datetime.now(self.timezone)
             events_result = service.events().list(
@@ -294,9 +222,7 @@ class EnhancedCalendarManager:
                 singleEvents=True,
                 orderBy='startTime'
             ).execute()
-            
             events = events_result.get('items', [])
-            
             return {
                 'status': 'success',
                 'calendar_name': calendar.get('summary', 'Unknown'),
@@ -305,7 +231,6 @@ class EnhancedCalendarManager:
                 'recent_events_count': len(events),
                 'message': 'Google Calendar connection successful'
             }
-            
         except Exception as e:
             logger.error(f"Calendar connection test failed: {e}")
             return {
@@ -320,10 +245,8 @@ _enhanced_calendar_manager = None
 def get_enhanced_calendar_manager(timezone_str: str = None) -> EnhancedCalendarManager:
     """Get or create enhanced calendar manager instance"""
     global _enhanced_calendar_manager
-    
     if _enhanced_calendar_manager is None:
         if timezone_str is None:
             timezone_str = os.getenv('TIMEZONE', 'Asia/Kolkata')
         _enhanced_calendar_manager = EnhancedCalendarManager(timezone_str)
-    
     return _enhanced_calendar_manager
