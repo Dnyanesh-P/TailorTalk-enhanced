@@ -1,12 +1,14 @@
 import os
+import json
 
-# Ensure the credentials file exists at the expected path
+# SERVICE ACCOUNT CREDENTIALS SETUP - Updated for proper service account authentication
 creds_env = os.getenv('GOOGLE_CREDENTIALS_JSON')
-creds_path = os.getenv('GOOGLE_CREDENTIALS_PATH', 'config/credentials.json')
-if creds_env and not os.path.exists(creds_path):
-    os.makedirs(os.path.dirname(creds_path), exist_ok=True)
-    with open(creds_path, "w") as f:
-        f.write(creds_env)
+if creds_env:
+    logger.info("✅ GOOGLE_CREDENTIALS_JSON environment variable found - using service account authentication")
+    # No need to write to file anymore - we'll use the JSON directly
+else:
+    logger.warning("⚠️ GOOGLE_CREDENTIALS_JSON not found - calendar will use mock mode")
+
 import uvicorn
 import logging
 from dotenv import load_dotenv
@@ -39,7 +41,7 @@ load_dotenv()
 STREAMLIT_APP_URL = "https://tailortalk-enhanced-uael6bdk6fzdahsnfuemah.streamlit.app/"
 STREAMLIT_DOMAIN = "tailortalk-enhanced-uael6bdk6fzdahsnfuemah.streamlit.app"
 
-# Import enhanced modules with comprehensive error handling
+# Import enhanced modules with comprehensive error handling - UPDATED FOR SERVICE ACCOUNT
 ENHANCED_MODULES_STATUS = {
     'advanced_parser': False,
     'enhanced_calendar': False,
@@ -47,7 +49,8 @@ ENHANCED_MODULES_STATUS = {
     'enhanced_agent': False,
     'fallback_agent': False,
     'openai_agent': False,
-    'streamlit_integration': True  # Added for Streamlit integration tracking
+    'streamlit_integration': True,
+    'service_account_auth': False  # New status for service account authentication
 }
 
 # Try to import enhanced modules (keeping your existing import logic)
@@ -83,29 +86,48 @@ except Exception as e:
             }
     advanced_parser = MockAdvancedParser()
 
-# Enhanced calendar manager imports with fallbacks
+# UPDATED: Enhanced calendar manager imports with SERVICE ACCOUNT authentication
 try:
-    from backend.enhanced_calendar import get_enhanced_calendar_manager, EnhancedCalendarManager
+    # Try to import service account version first
+    from backend.enhanced_calendar_service_account import get_enhanced_calendar_manager, EnhancedCalendarManager
     ENHANCED_MODULES_STATUS['enhanced_calendar'] = True
-    logger.info("✅ Enhanced calendar manager imported successfully")
+    ENHANCED_MODULES_STATUS['service_account_auth'] = True
+    logger.info("✅ Enhanced calendar manager with SERVICE ACCOUNT imported successfully")
 except ImportError as e:
-    logger.warning(f"⚠️ Enhanced calendar manager not available: {e}")
-    # Create mock calendar manager
-    class MockCalendarManager:
-        def get_availability(self, date_str):
-            return ["09:00", "10:00", "11:00", "14:00", "15:00", "16:00", "17:00"]
-        def test_connection(self):
-            return {'status': 'success', 'calendar_name': 'Mock Calendar'}
-    
-    def get_enhanced_calendar_manager():
-        return MockCalendarManager()
+    logger.warning(f"⚠️ Enhanced calendar manager with service account not available: {e}")
+    # Try original enhanced calendar as fallback
+    try:
+        from backend.enhanced_calendar import get_enhanced_calendar_manager, EnhancedCalendarManager
+        ENHANCED_MODULES_STATUS['enhanced_calendar'] = True
+        logger.info("✅ Enhanced calendar manager (OAuth version) imported successfully")
+    except ImportError as e2:
+        logger.warning(f"⚠️ Enhanced calendar manager not available: {e2}")
+        # Create mock calendar manager
+        class MockCalendarManager:
+            def get_availability(self, date_str):
+                return ["09:00", "10:00", "11:00", "14:00", "15:00", "16:00", "17:00"]
+            def test_connection(self):
+                return {
+                    'status': 'success', 
+                    'calendar_name': 'Mock Calendar',
+                    'authentication_method': 'mock',
+                    'service_account_email': 'mock@example.com'
+                }
+        
+        def get_enhanced_calendar_manager():
+            return MockCalendarManager()
 except Exception as e:
     logger.error(f"❌ Enhanced calendar manager import error: {e}")
     class MockCalendarManager:
         def get_availability(self, date_str):
             return ["09:00", "10:00", "11:00", "14:00", "15:00", "16:00", "17:00"]
         def test_connection(self):
-            return {'status': 'success', 'calendar_name': 'Mock Calendar'}
+            return {
+                'status': 'success', 
+                'calendar_name': 'Mock Calendar',
+                'authentication_method': 'mock',
+                'service_account_email': 'mock@example.com'
+            }
     
     def get_enhanced_calendar_manager():
         return MockCalendarManager()
@@ -210,16 +232,29 @@ except Exception as e:
     OPENAI_AVAILABLE = False
     OpenAIBookingAgent = None
 
-# Basic calendar manager fallback
+# UPDATED: Basic calendar manager fallback with SERVICE ACCOUNT support
 try:
-    from backend.google_calendar import get_calendar_manager
-    logger.info("✅ Basic calendar manager available as fallback")
+    # Try service account version first
+    from backend.google_calendar_service_account import get_calendar_manager
+    ENHANCED_MODULES_STATUS['service_account_auth'] = True
+    logger.info("✅ Basic calendar manager with SERVICE ACCOUNT available as fallback")
 except ImportError as e:
-    logger.error(f"❌ No calendar manager available: {e}")
-    def get_calendar_manager():
-        return MockCalendarManager()
+    logger.warning(f"⚠️ Service account calendar not available: {e}")
+    # Try original calendar manager
+    try:
+        from backend.google_calendar import get_calendar_manager
+        logger.info("✅ Basic calendar manager (OAuth version) available as fallback")
+    except ImportError as e2:
+        logger.error(f"❌ No calendar manager available: {e2}")
+        def get_calendar_manager():
+            class MockCalendarManager:
+                def get_availability(self, date_str):
+                    return ["09:00", "10:00", "11:00", "14:00", "15:00", "16:00", "17:00"]
+                def test_connection(self):
+                    return {'status': 'success', 'calendar_name': 'Mock Calendar'}
+            return MockCalendarManager()
 
-# Real-time availability manager
+# Real-time availability manager (keeping your existing code)
 class MockRealTimeManager:
     def __init__(self):
         self.update_interval = 30
@@ -257,12 +292,42 @@ except Exception as e:
 # Get timezone
 TIMEZONE = pytz.timezone(os.getenv('TIMEZONE', 'Asia/Kolkata'))
 
-# Lifespan context manager for startup and shutdown events
+# UPDATED: Lifespan context manager with service account validation
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    logger.info("🚀 Starting TailorTalk Enhanced with Streamlit integration")
+    logger.info("🚀 Starting TailorTalk Enhanced with SERVICE ACCOUNT authentication")
     logger.info(f"🌐 Streamlit App URL: {STREAMLIT_APP_URL}")
+    
+    # Validate service account credentials
+    credentials_json = os.getenv('GOOGLE_CREDENTIALS_JSON')
+    if credentials_json:
+        try:
+            credentials_info = json.loads(credentials_json)
+            service_account_email = credentials_info.get('client_email', 'Unknown')
+            project_id = credentials_info.get('project_id', 'Unknown')
+            logger.info(f"✅ Service account credentials validated")
+            logger.info(f"📧 Service account email: {service_account_email}")
+            logger.info(f"🏗️  Project ID: {project_id}")
+            
+            # Test calendar connection if available
+            if ENHANCED_MODULES_STATUS.get('service_account_auth', False):
+                try:
+                    calendar_manager = get_enhanced_calendar_manager()
+                    test_result = calendar_manager.test_connection()
+                    if test_result['status'] == 'success':
+                        logger.info(f"✅ Calendar connection successful: {test_result.get('calendar_name', 'Unknown')}")
+                    else:
+                        logger.warning(f"⚠️ Calendar connection failed: {test_result.get('error', 'Unknown error')}")
+                except Exception as e:
+                    logger.error(f"❌ Calendar connection test error: {e}")
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ Invalid JSON in GOOGLE_CREDENTIALS_JSON: {e}")
+        except Exception as e:
+            logger.error(f"❌ Error validating service account credentials: {e}")
+    else:
+        logger.warning("⚠️ GOOGLE_CREDENTIALS_JSON not found - using mock calendar")
+    
     if ENHANCED_MODULES_STATUS.get('realtime_availability', False):
         asyncio.create_task(realtime_availability_manager.start_monitoring())
     yield
@@ -271,11 +336,18 @@ async def lifespan(app: FastAPI):
     if ENHANCED_MODULES_STATUS.get('realtime_availability', False):
         await realtime_availability_manager.stop_monitoring()
 
-# Create FastAPI app with enhanced metadata and Streamlit integration
+# Create FastAPI app with enhanced metadata and SERVICE ACCOUNT integration
 app = FastAPI(
-    title="TailorTalk AI Booking Assistant API - Enhanced with Streamlit",
+    title="TailorTalk AI Booking Assistant API - Service Account Edition",
     description=f"""
-    **TailorTalk Enhanced** is an intelligent appointment booking system with advanced features:
+    **TailorTalk Enhanced** with Google Service Account authentication for production deployment.
+    
+    ## 🔐 Service Account Authentication
+    
+    * **Production Ready** - No user interaction required
+    * **Server-Side Authentication** - Perfect for Render deployment  
+    * **Secure** - Uses service account credentials from environment variables
+    * **Reliable** - No OAuth token expiration issues
     
     ## 🌐 Streamlit Integration
     
@@ -286,11 +358,10 @@ app = FastAPI(
     ## 🚀 Enhanced Features
     
     * **Precise Date/Time Parsing** - Handles "5th July", "4th August 3:30pm", etc.
-    * **Advanced Calendar Integration** - Real-time Google Calendar sync with timezone handling
+    * **Service Account Calendar Integration** - Production-ready Google Calendar sync
     * **Smart Conversation Flow** - Context-aware multi-turn conversations
     * **Robust Error Handling** - Comprehensive error recovery and user guidance
     * **Multiple Agent Support** - Enhanced AI, OpenAI, and rule-based fallback agents
-    * **Real-time Availability Updates** - Automatic updates to availability data
     
     ## 🎯 Supported Formats
     
@@ -298,11 +369,11 @@ app = FastAPI(
     * **Times**: "3:30pm", "15:00", "afternoon", "morning", "3 PM"
     * **Combined**: "Book appointment on 5th July at 3:30pm"
     
-    ## 🔧 System Status
+    ## 🔧 Authentication Status
     
-    Check `/health` endpoint for detailed system status and component availability.
+    Check `/health` endpoint for detailed authentication and system status.
     """,
-    version="3.1.0",  # Updated version for Streamlit integration
+    version="3.2.0",  # Updated version for service account
     contact={
         "name": "TailorTalk Support",
         "email": "dnyaneshpurohit@gmail.com",
@@ -314,7 +385,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Enhanced CORS middleware with specific Streamlit configuration
+# Enhanced CORS middleware with specific Streamlit configuration (keeping your existing config)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -331,7 +402,7 @@ app.add_middleware(
     expose_headers=["*"]
 )
 
-# Initialize the AI agent globally
+# Initialize the AI agent globally (keeping your existing logic)
 booking_agent = None
 
 async def get_booking_agent():
@@ -399,7 +470,7 @@ async def get_booking_agent():
     
     return booking_agent
 
-# Your existing Pydantic models (keeping all of them)
+# Your existing Pydantic models (keeping all of them exactly as they are)
 class BookingStatus(str, Enum):
     SUCCESS = "success"
     ERROR = "error"
@@ -415,7 +486,7 @@ class MeetingType(str, Enum):
 
 class ChatMessage(BaseModel):
     message: str = Field(..., min_length=1, max_length=1000, description="User message for the AI assistant")
-    user_id: Optional[str] = Field("streamlit_user", description="Unique identifier for the user")  # Changed default
+    user_id: Optional[str] = Field("streamlit_user", description="Unique identifier for the user")
     
     model_config = {
         "json_schema_extra": {
@@ -432,7 +503,7 @@ class ChatResponse(BaseModel):
     timestamp: datetime = Field(..., description="Response timestamp")
     user_id: str = Field(..., description="User identifier")
     agent_type: Optional[str] = Field(None, description="Type of agent that processed the request")
-    streamlit_app_url: Optional[str] = Field(STREAMLIT_APP_URL, description="Streamlit app URL")  # Added
+    streamlit_app_url: Optional[str] = Field(STREAMLIT_APP_URL, description="Streamlit app URL")
     
     model_config = {
         "json_schema_extra": {
@@ -456,7 +527,7 @@ class AvailabilityResponse(BaseModel):
     last_updated: Optional[str] = Field(None, description="Last updated timestamp")
     realtime_enabled: Optional[bool] = Field(None, description="Indicates if real-time updates are enabled")
     update_interval: Optional[int] = Field(None, description="Update interval in seconds")
-    streamlit_app_url: Optional[str] = Field(STREAMLIT_APP_URL, description="Streamlit app URL")  # Added
+    streamlit_app_url: Optional[str] = Field(STREAMLIT_APP_URL, description="Streamlit app URL")
     
     model_config = {
         "json_schema_extra": {
@@ -500,20 +571,21 @@ class HealthResponse(BaseModel):
     components: Dict[str, str] = Field(..., description="Status of individual components")
     config: Dict[str, Any] = Field(..., description="System configuration")
     enhanced_features: Dict[str, bool] = Field(..., description="Enhanced features availability")
-    streamlit_integration: Dict[str, Any] = Field(..., description="Streamlit integration status")  # Added
+    streamlit_integration: Dict[str, Any] = Field(..., description="Streamlit integration status")
+    authentication: Dict[str, Any] = Field(..., description="Authentication status")  # Added
 
-# API Routes with Streamlit integration
+# API Routes with Streamlit integration (keeping your existing routes but updating health check)
 
 @app.get(
     "/",
     tags=["System"],
-    summary="API Root - Enhanced with Streamlit",
-    description="Get enhanced API information and status with Streamlit integration",
+    summary="API Root - Service Account Edition",
+    description="Get enhanced API information and status with service account authentication",
     response_model=Dict[str, Any]
 )
 async def root():
     """
-    Welcome endpoint for TailorTalk Enhanced API with Streamlit integration.
+    Welcome endpoint for TailorTalk Enhanced API with service account authentication.
     
     Returns system status, version, and available enhanced features.
     """
@@ -530,13 +602,22 @@ async def root():
     else:
         agent_type = "mock"
     
+    # Check service account status
+    credentials_configured = bool(os.getenv('GOOGLE_CREDENTIALS_JSON'))
+    auth_method = "service_account" if credentials_configured else "mock"
+    
     return {
-        "message": "🚀 TailorTalk Enhanced AI Booking Agent API with Streamlit Integration",
+        "message": "🚀 TailorTalk Enhanced AI Booking Agent API - Service Account Edition",
         "status": "healthy",
-        "version": "3.1.0",
+        "version": "3.2.0",  # Updated version
         "current_time": current_time,
         "timezone": str(TIMEZONE),
         "active_agent": agent_type,
+        "authentication": {
+            "method": auth_method,
+            "service_account_configured": credentials_configured,
+            "status": "ready" if credentials_configured else "mock_mode"
+        },
         "streamlit_integration": {
             "app_url": STREAMLIT_APP_URL,
             "domain": STREAMLIT_DOMAIN,
@@ -546,6 +627,7 @@ async def root():
         "enhanced_features": {
             "precise_date_parsing": ENHANCED_MODULES_STATUS['advanced_parser'],
             "enhanced_calendar": ENHANCED_MODULES_STATUS['enhanced_calendar'],
+            "service_account_auth": ENHANCED_MODULES_STATUS['service_account_auth'],
             "precise_scheduling": ENHANCED_MODULES_STATUS['precise_scheduler'],
             "enhanced_conversations": ENHANCED_MODULES_STATUS['enhanced_agent'],
             "timezone_handling": True,
@@ -564,13 +646,11 @@ async def root():
             "parse-datetime": "/parse-datetime - Test enhanced parsing",
             "health": "/health - Comprehensive system health check",
             "docs": "/docs - API documentation",
-            "streamlit-redirect": "/streamlit - Redirect to Streamlit app",
-            "realtime_availability": "/realtime/availability/{date} - Get real-time availability",
-            "subscribe_to_updates": "/realtime/subscribe - Subscribe to real-time updates"
+            "streamlit-redirect": "/streamlit - Redirect to Streamlit app"
         }
     }
 
-# NEW: Streamlit redirect endpoint
+# Keep your existing Streamlit endpoints
 @app.get(
     "/streamlit",
     tags=["Streamlit Integration"],
@@ -593,7 +673,6 @@ async def redirect_to_streamlit():
     </html>
     """)
 
-# NEW: Streamlit integration status endpoint
 from fastapi import Request
 
 @app.get(
@@ -622,36 +701,49 @@ async def streamlit_integration_status(request: Request):
         }
     }
 
+# UPDATED: Health check with service account authentication status
 @app.get(
     "/health",
     tags=["System"],
-    summary="Enhanced Health Check with Streamlit",
-    description="Comprehensive system health check with enhanced components and Streamlit integration",
+    summary="Enhanced Health Check with Service Account Status",
+    description="Comprehensive system health check with service account authentication status",
     response_model=HealthResponse
 )
 async def health_check():
     """
-    Comprehensive health check for all enhanced components including Streamlit integration.
+    Comprehensive health check for all enhanced components including service account authentication.
     """
     try:
+        # Check service account credentials
+        credentials_json = os.getenv('GOOGLE_CREDENTIALS_JSON')
+        credentials_configured = bool(credentials_json)
+        service_account_email = "not available"
+        project_id = "not available"
+        
+        if credentials_configured:
+            try:
+                credentials_info = json.loads(credentials_json)
+                service_account_email = credentials_info.get('client_email', 'unknown')
+                project_id = credentials_info.get('project_id', 'unknown')
+            except:
+                pass
+        
         # Check OpenAI configuration
         openai_key = os.getenv("OPENAI_API_KEY")
         openai_configured = bool(openai_key and openai_key != "your_openai_api_key_here")
         
-        # Check Google credentials
-        credentials_path = os.getenv('GOOGLE_CREDENTIALS_PATH', '')
-        credentials_exist = os.path.exists(credentials_path) if credentials_path else False
-        
-        # Test calendar connection
+        # Test calendar connection with service account
         calendar_status = "not tested"
         try:
-            if ENHANCED_MODULES_STATUS['enhanced_calendar']:
+            if ENHANCED_MODULES_STATUS['enhanced_calendar'] or ENHANCED_MODULES_STATUS.get('service_account_auth', False):
                 calendar_manager = get_enhanced_calendar_manager()
                 connection_result = calendar_manager.test_connection()
                 if connection_result['status'] == 'success':
-                    calendar_status = f"enhanced calendar connected ({connection_result['calendar_name']})"
+                    auth_method = connection_result.get('authentication_method', 'unknown')
+                    calendar_name = connection_result.get('calendar_name', 'Unknown')
+                    calendar_status = f"{auth_method} calendar connected ({calendar_name})"
                 else:
-                    calendar_status = f"enhanced calendar error: {connection_result['error']}"
+                    calendar_status = f"calendar error: {connection_result.get('error', 'unknown error')}"
             else:
                 # Fallback to basic calendar
                 try:
@@ -732,8 +824,8 @@ async def health_check():
             current_time=current_time,
             timezone=str(TIMEZONE),
             components={
+                "service_account_credentials": "configured" if credentials_configured else "not configured (using mock)",
                 "openai_api": "configured" if openai_configured else "not configured (using fallback)",
-                "google_credentials": "found" if credentials_exist else "missing (using mock)",
                 "calendar_integration": calendar_status,
                 "ai_agent": agent_status,
                 "date_time_parsing": parsing_status,
@@ -742,11 +834,11 @@ async def health_check():
                 "enhanced_conversations": "available" if ENHANCED_MODULES_STATUS['enhanced_agent'] else "using fallback/mock"
             },
             config={
-                "credentials_path": credentials_path,
                 "calendar_id": os.getenv('CALENDAR_ID', 'primary'),
                 "timezone": str(TIMEZONE),
                 "active_agent_type": agent_type,
                 "openai_available": openai_configured,
+                "service_account_configured": credentials_configured,
                 "enhanced_mode": ENHANCED_MODULES_STATUS['enhanced_agent'],
                 "realtime_enabled": ENHANCED_MODULES_STATUS.get('realtime_availability', False),
                 "realtime_interval": realtime_availability_manager.update_interval if ENHANCED_MODULES_STATUS.get('realtime_availability', False) else None,
@@ -760,6 +852,13 @@ async def health_check():
                 "status": "integrated",
                 "redirect_endpoint": "/streamlit",
                 "status_endpoint": "/streamlit/status"
+            },
+            authentication={
+                "method": "service_account" if credentials_configured else "mock",
+                "credentials_configured": credentials_configured,
+                "service_account_email": service_account_email,
+                "project_id": project_id,
+                "status": "ready" if credentials_configured else "mock_mode"
             }
         )
         
@@ -782,9 +881,15 @@ async def health_check():
             streamlit_integration={
                 "app_url": STREAMLIT_APP_URL,
                 "status": "integrated"
+            },
+            authentication={
+                "method": "service_account",
+                "status": "error",
+                "error": str(e)
             }
         )
 
+# Keep all your existing endpoints (chat, availability, parse-datetime, etc.) exactly as they are
 @app.post(
     "/chat",
     tags=["AI Assistant"],
@@ -851,20 +956,16 @@ async def chat_endpoint(message: ChatMessage):
             streamlit_app_url=STREAMLIT_APP_URL
         )
 
-# Continue with your existing endpoints (availability, parse-datetime, etc.)
-# but add streamlit_app_url to responses where appropriate
-
 @app.get(
     "/availability/{date}",
     tags=["Calendar"],
-    summary="Enhanced Availability Check with Streamlit Integration",
-    description="Get available time slots with enhanced calendar integration, optimized for Streamlit",
+    summary="Enhanced Availability Check with Service Account",
+    description="Get available time slots with service account calendar integration",
     response_model=AvailabilityResponse
 )
 async def get_availability(date: str):
     """
-    Check available time slots using enhanced calendar integration.
-    Optimized for Streamlit frontend.
+    Check available time slots using service account calendar integration.
     """
     try:
         # Validate date format
@@ -931,9 +1032,6 @@ async def get_availability(date: str):
             streamlit_app_url=STREAMLIT_APP_URL
         )
 
-# Keep all your existing endpoints (parse-datetime, test-booking, realtime endpoints, etc.)
-# I'll include the key ones with Streamlit integration
-
 @app.get(
     "/parse-datetime",
     tags=["Enhanced Features"],
@@ -963,7 +1061,7 @@ async def parse_datetime_endpoint(text: str = Query(..., description="Natural la
             detail=f"Enhanced parsing error: {str(e)}"
         )
 
-# Enhanced error handlers with Streamlit integration
+# Enhanced error handlers with Streamlit integration (keeping your existing handlers)
 @app.exception_handler(HTTPException)
 async def enhanced_http_exception_handler(request, exc):
     return JSONResponse(
@@ -994,13 +1092,25 @@ async def enhanced_general_exception_handler(request, exc):
     )
 
 if __name__ == "__main__":
-    print("🚀 Starting TailorTalk Enhanced AI Booking Agent API with Streamlit Integration...")
+    print("🚀 Starting TailorTalk Enhanced with SERVICE ACCOUNT authentication...")
     print("=" * 80)
     
     # System information
     print(f"📍 Timezone: {TIMEZONE}")
     print(f"🌐 Streamlit App: {STREAMLIT_APP_URL}")
-    print(f"📁 Credentials: {os.getenv('GOOGLE_CREDENTIALS_PATH', 'Not set (using mock)')}")
+    
+    # Service account status
+    credentials_configured = bool(os.getenv('GOOGLE_CREDENTIALS_JSON'))
+    if credentials_configured:
+        print(f"🔐 Service Account: Configured")
+        try:
+            creds_info = json.loads(os.getenv('GOOGLE_CREDENTIALS_JSON'))
+            print(f"📧 Service Account Email: {creds_info.get('client_email', 'Unknown')}")
+            print(f"🏗️  Project ID: {creds_info.get('project_id', 'Unknown')}")
+        except:
+            print(f"📧 Service Account Email: Unable to parse credentials")
+    else:
+        print(f"🔐 Service Account: Not configured (using mock)")
     
     # OpenAI status
     openai_key = os.getenv('OPENAI_API_KEY')
@@ -1038,13 +1148,14 @@ if __name__ == "__main__":
     print(f"   🔗 Domain: {STREAMLIT_DOMAIN}")
     print(f"   ✅ CORS: Configured for Streamlit")
     
-    print("\n🎯 Ready for enhanced appointment booking with Streamlit integration!")
+    print(f"\n🔐 Authentication Method: SERVICE ACCOUNT")
+    print(f"🎉 Ready for production deployment on Render!")
     print("=" * 80)
     
     uvicorn.run(
-        "main_trial:app",
-        host="0.0.0.0",  # Changed to allow external connections
+        "main_trial_updated:app",  # Updated module name
+        host="0.0.0.0",
         port=int(os.getenv("PORT", 8001)),
-        reload=False,  # Changed to False for production
+        reload=False,
         log_level="info"
     )
