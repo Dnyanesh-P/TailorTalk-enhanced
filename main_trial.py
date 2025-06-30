@@ -556,7 +556,14 @@ class AvailabilityResponse(BaseModel):
             }
         }
     }
-
+@app.get(
+    "/realtime/availability/{date}",
+    tags=["Calendar"],
+    summary="Realtime Availability (alias)",
+    description="Alias for /availability/{date} for compatibility"
+)
+async def realtime_availability(date: str):
+    return await get_availability(date)
 class DateTimeParseRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=500, description="Natural language text to parse")
     
