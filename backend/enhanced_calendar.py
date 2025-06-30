@@ -112,7 +112,21 @@ class EnhancedCalendarManager:
             return ["09:00", "10:00", "11:00", "14:00", "15:00", "16:00", "17:00"]
     
     def create_event_with_details(self, date: str, time: str, details: Dict[str, Any]) -> str:
-        """Create a calendar event with proper timezone handling"""
+    try:
+        logger.info(f"Attempting to create event: {date} {time} {details}")
+        service = self._get_service()
+        # ... event dict construction ...
+        created_event = service.events().insert(
+            calendarId=self.calendar_id,
+            body=event
+        ).execute()
+        logger.info(f"Google Calendar API response: {created_event}")
+        event_id = created_event.get('id')
+        logger.info(f"✅ Successfully created event with ID: {event_id}")
+        return event_id
+    except Exception as e:
+        logger.error(f"Failed to create calendar event: {e}", exc_info=True)
+        raise Exception(f"Calendar booking failed: {str(e)}")
         try:
             logger.info(f"Creating event for {date} at {time} with details: {details}")
             
