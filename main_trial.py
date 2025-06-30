@@ -1,14 +1,28 @@
 import os
 import json
 
-# SERVICE ACCOUNT CREDENTIALS SETUP - Updated for proper service account authentication
+# Set up logging FIRST - before any logger usage
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('tailortalk.log', encoding='utf-8')
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# SERVICE ACCOUNT CREDENTIALS SETUP - Now logger is available
 creds_env = os.getenv('GOOGLE_CREDENTIALS_JSON')
 if creds_env:
     logger.info("✅ GOOGLE_CREDENTIALS_JSON environment variable found - using service account authentication")
-    # No need to write to file anymore - we'll use the JSON directly
 else:
     logger.warning("⚠️ GOOGLE_CREDENTIALS_JSON not found - calendar will use mock mode")
 
+import uvicorn
+from dotenv import load_dotenv
+# ... rest of your imports
 import uvicorn
 import logging
 from dotenv import load_dotenv
