@@ -102,14 +102,12 @@ except Exception as e:
 
 # UPDATED: Enhanced calendar manager imports with SERVICE ACCOUNT authentication
 try:
-    # Try to import service account version first
-    from backend.enhanced_calendar_service_account import get_enhanced_calendar_manager, EnhancedCalendarManager
+    from backend.enhanced_calendar import get_enhanced_calendar_manager, EnhancedCalendarManager
     ENHANCED_MODULES_STATUS['enhanced_calendar'] = True
     ENHANCED_MODULES_STATUS['service_account_auth'] = True
     logger.info("✅ Enhanced calendar manager with SERVICE ACCOUNT imported successfully")
 except ImportError as e:
-    logger.warning(f"⚠️ Enhanced calendar manager with service account not available: {e}")
-    # Try original enhanced calendar as fallback
+    logger.warning(f"⚠️ Enhanced calendar manager not available: {e}")
     try:
         from backend.enhanced_calendar import get_enhanced_calendar_manager, EnhancedCalendarManager
         ENHANCED_MODULES_STATUS['enhanced_calendar'] = True
